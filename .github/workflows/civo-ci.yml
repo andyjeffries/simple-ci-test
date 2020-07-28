@@ -1,0 +1,73 @@
+name: Civo CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test-app:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Push to DockerHub
+        uses: docker/build-push-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+          repository: andyjeffries/simple-ci-test
+          tags: latest
+      - name: Install civo
+        uses: civo/action-civo@v1.0.0
+        with:
+          token: ${{ secrets.CIVO_TOKEN }}
+      - name: Create a k3s cluster
+        run: civo k3s create github-ci-${{github.sha}} -n 3 --wait
+      - name: Make config folder
+        run: mkdir ~/.kube
+      - name: Save our cluster's authentication details
+        run: >
+          civo k3s config github-ci-${{github.sha}} --save
+          --local-path ~/.kube/config -y
+      - name: Ensure we can connect to the API
+        run: >
+          i=0;
+          while [ $i -le 120 ]; do
+            kubectl get nodes && break;
+            ((i++));
+            sleep 1;
+          done
+      - name: Authenticate our Kubernetes cluster to Docker Hub
+        run: >
+          kubectl create secret docker-registry regcred
+          --docker-email=${{secrets.DOCKER_EMAIL}}
+          --docker-server=docker.io
+          --docker-username=${{ secrets.DOCKER_USERNAME }}
+          --docker-password=${{ secrets.DOCKER_TOKEN }}
+      - name: Replace our cluster ID in the Kubernetes YAML for the ingress hostname
+        run: sed -i "s/CLUSTER_ID/`civo k3s show github-ci-${{github.sha}} -o custom -f ID`/" k8s.yml
+      - name: Deploy our app to the cluster
+        run: kubectl apply -f k8s.yml
+      - name: Wait for the deployment to be ready
+        run: >
+          i=0;
+          while [ $i -le 120 ]; do
+            kubectl rollout status deployment/hello-world | grep "successfully rolled out" && break;
+            ((i++));
+            sleep 1;
+          done
+      - name: Curl our endpoint and test that the output matches
+        run: curl -s http://hello-world.`civo k3s show github-ci-${{github.sha}} -o custom -f ID`.k8s.civo.com | grep "Hello world"
+  cleandown:
+    needs: test-app
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    steps:
+      - name: Install civo
+        uses: civo/action-civo@v1.0.0
+        with:
+          token: ${{ secrets.CIVO_TOKEN }}
+      - name: Delete our k3s cluster
+        run: civo k3s delete github-ci-${{github.sha}} -y
