@@ -3,12 +3,9 @@ GEM
   specs:
     mustermann (1.1.1)
       ruby2_keywords (~> 0.0.1)
-    rack (2.2.3)
+    rack (2.2.6.3)
     rack-protection (2.0.8.1)
       rack
-    rake (13.0.1)
-    ruby-debug-ide (0.7.2)
-      rake (>= 0.8.1)
     ruby2_keywords (0.0.2)
     sinatra (2.0.8.1)
       mustermann (~> 1.0)
@@ -21,7 +18,6 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
-  ruby-debug-ide (~> 0.7.0)
   sinatra (~> 2.0, >= 2.0.8.1)
 
 BUNDLED WITH
